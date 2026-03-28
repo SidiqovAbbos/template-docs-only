@@ -1,0 +1,59 @@
+name: Claude – Generate Docs
+
+on:
+  issues:
+    types: [assigned]
+
+jobs:
+  generate:
+    # Trigger only when assigned to the Claude GitHub App
+    if: |
+      github.event.assignee.login == 'claude[bot]' ||
+      github.event.assignee.login == 'claude'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate with Claude
+        id: claude
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A client documentation project has been assigned to you. Here are the requirements:
+
+            **Title:** ${{ github.event.issue.title }}
+
+            **Requirements:**
+            ${{ github.event.issue.body }}
+
+            Steps to follow:
+            1. Read `.github/copilot-instructions.md` — follow every rule there exactly
+            2. Update `PLAN.md` with the requirements above
+            3. Generate all required documentation files under `docs/`
+            4. Do NOT modify or delete these pre-configured files:
+               - `index.html`
+               - `.github/workflows/deploy-pages.yml`
+               - `.github/workflows/claude.yml`
+
+      - name: Merge PR to main
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --state open --json number --jq '.[0].number')
+          if [ -n "$PR" ]; then
+            gh pr merge "$PR" --squash --delete-branch
+          fi
+
+      - name: Close issue
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue close ${{ github.event.issue.number }} --comment "✅ Documentation generated and deployed to GitHub Pages."
